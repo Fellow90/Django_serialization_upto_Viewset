@@ -175,7 +175,7 @@ from rest_framework.decorators import action
 #         return Response(status=status.HTTP_404_NOT_FOUND)
 
 
-###using mixin and generic
+##using mixin and generic
 # class SnippetList(mixins.ListModelMixin,mixins.CreateModelMixin,generics.GenericAPIView):
 #     queryset = Snippet.objects.all()
 #     serializer_class = SnippetSerializer
@@ -252,7 +252,7 @@ from rest_framework.decorators import action
 
 
 
-# ##using the concept of viewset
+# # ##using the concept of viewset
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
     '''for list and retrieve actions'''
     queryset = User.objects.all()
@@ -263,11 +263,47 @@ class SnippetViewSet(viewsets.ModelViewSet):
     queryset = Snippet.objects.all()
     serializer_class = SnippetSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwneOrReadOnly]
+
+    
+    # def perform_create(self, serializer):
+    #     serializer.save(owner = self.request.user)
+
+
+### SIMPLY ADDING is_deleted attribute in model and then running all below code will help you out performing soft delete and restoring the deleting data back.
+    def list(self, request, *args, **kwargs):
+        snippets = Snippet.objects.filter(is_deleted=False)
+        serializer = SnippetSerializer(snippets,many = True,context = {'request':request})
+        return Response(serializer.data,status=status.HTTP_200_OK)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_deleted:
+            return Response({'msg':'Record not found'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.is_deleted = True
+        instance.save()
+        return Response({'msg':'Record moved to trash'}, status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=True, renderer_classes = [renderers.StaticHTMLRenderer])
     def highlight(self,request,*args,**kwargs):
         snippet = self.get_object()
         return Response(snippet.highlighted)
     
-    def perform_create(self, serializer):
-        serializer.save(owner = self.request.user)
+    @action(detail=True,methods=['get'])
+    def restore(self,request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_deleted:
+            instance.is_deleted = False
+            instance.save()
+            return Response({'msg':"Record restored successfully"}, status=status.HTTP_200_OK)
+        return Response({'msg':'Record not found on trash'},status=status.HTTP_400_BAD_REQUEST)
+    
+
+    
+
+    
+    
